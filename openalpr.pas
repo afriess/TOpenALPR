@@ -1,5 +1,12 @@
 unit openalpr;
 
+{$IFDEF DELPHI}
+{$ELSE}
+  {$MODE Delphi}
+  { $ Define FirstDetectionDelayFix}
+{$ENDIF}
+
+
 { The MIT License (MIT) 
  
  TOpenALPR 
@@ -24,12 +31,22 @@ unit openalpr;
  SOFTWARE. }
 
 interface
+{$IFDEF DELPHI}
 uses
   Winapi.Windows,
   System.Classes,
   System.SysUtils,
   System.Generics.Collections,
   Vcl.Graphics;
+{$ELSE}
+uses
+  Windows,
+  Classes,
+  SysUtils,
+  Generics.Collections,
+  Graphics;
+{$ENDIF}
+
 
 type
   TAlpr = Pointer;
@@ -133,7 +150,7 @@ type
     openalpr_free_response_string: Tfnopenalpr_free_response_string;
     openalpr_cleanup: Tfnopenalpr_cleanup;
     function JSONBufferToString(pJSON: PUTF8Char): String;
-    function BitmapToPixelData(const ABitmap: Vcl.Graphics.TBitmap; out ABytesPerPixel: Integer): TMemoryStream;
+    function BitmapToPixelData(const ABitmap: {$IFDEF DELPHI}Vcl.{$ENDIF}Graphics.TBitmap; out ABytesPerPixel: Integer): TMemoryStream;
     function PROIToROI(AROI: PAlprCRegionOfInterest; AX, AY, AWidth, AHeight: Integer): TAlprCRegionOfInterest;
   public
     // Initializes OpenALPR library
@@ -153,11 +170,11 @@ type
     procedure SetCountry(ACountry: String);
     // Update the detection mask without reloading the library
     procedure SetMask(const AFileName: String); overload;
-    procedure SetMask(const ABitmap: Vcl.Graphics.TBitmap); overload;
+    procedure SetMask(const ABitmap: {$IFDEF DELPHI}Vcl.Graphics.{$ENDIF}TBitmap); overload;
     // Recognizes plates from a file. Formats supported by OpenALPR
     function RecognizeFile(AFileName: String; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
     // Recognizes plates from a bitmap
-    function RecognizeBitmap(const ABitmap: Vcl.Graphics.TBitmap; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
+    function RecognizeBitmap(const ABitmap: {$IFDEF DELPHI}Vcl.Graphics.{$ENDIF}TBitmap; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
     // Recognizes plates from a image buffer, useful for video streams as input
     function RecognizeBuffer(const ABuffer: Pointer; AImageWidth, AImageHeight: Integer; ABytesPerPixel: Integer = 3; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
 
@@ -172,9 +189,9 @@ var
 {.$DEFINE FirstDetectionDelayFix}
 
 implementation
-uses
+{uses
   System.JSON,
-  Vcl.Imaging.Jpeg;
+  Vcl.Imaging.Jpeg;}
 
 { TAlprCRegionOfInterest }
 
@@ -278,6 +295,10 @@ begin
     configFile := TStringList.Create;
     try
       try
+        {$IFDEF DELPHI}
+        {$else}
+        configFile.Sorted:=true;
+        {$ENDIF}
         configFile.LoadFromFile(AConfigFile);
         configFile.Sort;
         iw := -1;
@@ -349,7 +370,7 @@ begin
     openalpr_set_country(FOpenALPRInstance, PUTF8Char(UTF8Encode(ACountry)));
 end;
 
-procedure TOpenALPR.SetMask(const ABitmap: Vcl.Graphics.TBitmap);
+procedure TOpenALPR.SetMask(const ABitmap: {$IFDEF DELPHI}Vcl.Graphics.{$ENDIF}TBitmap);
 var
   msBitmap: TMemoryStream;
   bytesPerPixel: Integer;
@@ -429,7 +450,7 @@ begin
   end;
 end;
 
-function TOpenALPR.RecognizeBitmap(const ABitmap: Vcl.Graphics.TBitmap; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
+function TOpenALPR.RecognizeBitmap(const ABitmap: {$IFDEF DELPHI}Vcl.Graphics.{$ENDIF}TBitmap; AROI: PAlprCRegionOfInterest = nil): TOpenALPRResult;
 var
   pJSON: PUTF8Char;
   msBitmap: TMemoryStream;
@@ -487,7 +508,7 @@ begin
   end;
 end;
 
-function TOpenALPR.BitmapToPixelData(const ABitmap: Vcl.Graphics.TBitmap;
+function TOpenALPR.BitmapToPixelData(const ABitmap: {$IFDEF DELPHI}Vcl.Graphics.{$ENDIF}TBitmap;
   out ABytesPerPixel: Integer): TMemoryStream;
 var
   msBitmap: TMemoryStream;
@@ -575,6 +596,7 @@ begin
   inherited Destroy;
 end;
 
+{$IFDEF DELPHI}
 procedure TOpenALPRResult.ParseJSON(AJSON: String);
 var
   jsonObj: TJSONObject;
@@ -639,5 +661,16 @@ begin
     end;
   end;
 end;
+{$ELSE}
+procedure TOpenALPRResult.ParseJSON(AJSON: String);
+var
+  plate: TOpenALPRPlate;
+begin
+  plate := TOpenALPRPlate.Create;
+  plate.Plate := 'Not implemented';
+  FPlates.Add(plate);
+end;
+
+{$ENDIF}
 
 end.

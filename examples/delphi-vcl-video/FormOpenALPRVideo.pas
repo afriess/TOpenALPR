@@ -1,16 +1,18 @@
 unit FormOpenALPRVideo;
 
+{$MODE Delphi}
+
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  {Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   System.UITypes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.ComCtrls,
   ocv.core.types_c,
   ocv.core_c,
   ocv.highgui_c,
-  ocv.utils,
-  openalpr;
+  ocv.utils,}
+  openalpr, ExtCtrls, StdCtrls, ComCtrls;
 
 type
   TOpenALPRVideoForm = class(TForm)
@@ -40,7 +42,7 @@ var
 
 implementation
 
-{$R *.dfm}
+{$R *.lfm}
 
 procedure TOpenALPRVideoForm.FormClose(Sender: TObject;
   var Action: TCloseAction);

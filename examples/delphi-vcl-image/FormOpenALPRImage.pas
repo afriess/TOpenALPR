@@ -1,13 +1,25 @@
 unit FormOpenALPRImage;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
 
+
+{$IFDEF FPC}
+
+uses
+  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
+  ComCtrls, Spin, openalpr;
+{$else}
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
   System.UITypes, System.IOUtils, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls,
   Vcl.ComCtrls, Vcl.Samples.Spin,
   Vcl.Imaging.pngimage, Vcl.Imaging.jpeg, Vcl.Imaging.GIFImg,
-  openalpr;
+  openalpr, ExtCtrls, StdCtrls, ComCtrls, Spin, Dialogs;
+{$ENDIF}
 
 type
   TOpenALPRImageForm = class(TForm)
@@ -80,7 +92,11 @@ var
 
 implementation
 
-{$R *.dfm}
+{$IFnDEF FPC}
+  {$R *.dfm}
+{$ELSE}
+  {$R *.lfm}
+{$ENDIF}
 
 procedure TOpenALPRImageForm.FormCreate(Sender: TObject);
 begin
