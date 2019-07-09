@@ -3,6 +3,7 @@ program Lazarus_LCL_image;
 {$mode objfpc}{$H+}
 
 uses
+  cmem,
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
