@@ -3,7 +3,7 @@ unit openalpr;
 {$IFDEF FPC}
   {$MODE Delphi}
 {$ENDIF}
-{$Define FirstDetectionDelayFix}
+{.$Define FirstDetectionDelayFix}
 
 
 { The MIT License (MIT) 
@@ -55,17 +55,17 @@ const
 
 type
   Tfnopenalpr_init = function(const country: PUTF8Char; const configFile: PUTF8Char; const runtimeDir: PUTF8Char): TAlpr; cdecl;
-  Tfnopenalpr_is_loaded = function(instance: TAlpr): Boolean; cdecl;
-  Tfnopenalpr_set_country = procedure(instance: TAlpr; const country: PUTF8Char); cdecl;
+  Tfnopenalpr_is_loaded = function(instance: TAlpr): Boolean;  cdecl;
+  Tfnopenalpr_set_country = procedure(instance: TAlpr; const country: PUTF8Char);  cdecl;
   Tfnopenalpr_set_prewarp = procedure(instance: TAlpr; const prewarp_config: PUTF8Char); cdecl;
-  Tfnopenalpr_set_mask = procedure(instance: TAlpr; pixelData: Pointer; bytesPerPixel, imgWidth, imgHeight: Integer); cdecl;
-  Tfnopenalpr_set_detect_region = procedure(instance: TAlpr; detectRegion: Boolean); cdecl;
+  Tfnopenalpr_set_mask = procedure(instance: TAlpr; pixelData: Pointer; bytesPerPixel, imgWidth, imgHeight: Integer);  cdecl;
+  Tfnopenalpr_set_detect_region = procedure(instance: TAlpr; detectRegion: Boolean);  cdecl;
   Tfnopenalpr_set_topn = procedure(instance: TAlpr; topN: Integer); cdecl;
-  Tfnopenalpr_set_default_region = procedure(instance: TAlpr; const region: PUTF8Char); cdecl;
-  Tfnopenalpr_recognize_rawimage = function(instance: TAlpr; pixelData: Pointer; bytesPerPixel, imgWidth, imgHeight: Integer; roi: TAlprCRegionOfInterest): PUTF8Char; cdecl;
-  Tfnopenalpr_recognize_encodedimage = function(instance: TAlpr; bytes: Pointer; len: Int64; roi: TAlprCRegionOfInterest): PUTF8Char; cdecl;
-  Tfnopenalpr_free_response_string = procedure(response: PUTF8Char); cdecl;
-  Tfnopenalpr_cleanup = procedure(instance: TAlpr); cdecl;
+  Tfnopenalpr_set_default_region = procedure(instance: TAlpr; const region: PUTF8Char);  cdecl;
+  Tfnopenalpr_recognize_rawimage = function(instance: TAlpr; pixelData: Pointer; bytesPerPixel, imgWidth, imgHeight: Integer; roi: TAlprCRegionOfInterest): PUTF8Char;  cdecl;
+  Tfnopenalpr_recognize_encodedimage = function(instance: TAlpr; bytes: Pointer; len: Int64; roi: TAlprCRegionOfInterest): PUTF8Char;  cdecl;
+  Tfnopenalpr_free_response_string = procedure(response: PUTF8Char);  cdecl;
+  Tfnopenalpr_cleanup = procedure(instance: TAlpr);  cdecl;
 
 type
   TPlateCoordinates = array[0..3] of TPoint;
@@ -127,7 +127,9 @@ type
     procedure FreeOpenAlprLib;
   private
     {$IFDEF FPC}
-    Saved8087CW : Word; // see https://forum.lazarus.freepascal.org/index.php/topic,46014.msg326495.html#msg326495
+    // see https://forum.lazarus.freepascal.org/index.php/topic,46014.msg326495.html#msg326495
+    Saved8087CW : Word;
+    SavedMXCSR : DWORD;
     {$ENDIF}
     openalpr_init: Tfnopenalpr_init;
     openalpr_is_loaded: Tfnopenalpr_is_loaded;
@@ -179,8 +181,13 @@ var
   MAX_DETECTION_INPUT_HEIGHT: Integer = 720;
 
 implementation
-{$IFNDEF FPC}
 uses
+{$IFDEF FPC}
+  Math,
+  fpjson,
+  jsonparser,
+  jsonscanner;
+{$Else}
   System.JSON,
   Vcl.Imaging.Jpeg;
 {$ENDIF}
@@ -201,9 +208,23 @@ end;
 constructor TOpenALPR.Create;
 begin
   {$IFDEF FPC}
-  Saved8087CW := Default8087CW;
-  System.Set8087CW($133f); // No fpu exceptions
-//  System.Set8087CW($1331); // No fpu exceptions
+  // See: https://forum.lazarus.freepascal.org/index.php/topic,46014.msg326495.html#msg326495
+  // Cite:
+  //   If it is indeed a win32 dll,
+  //   you should mask out the floating point exceptions,
+  //   because M$ handles them in a non-standard (not IEEE compliant) way.
+  //   This is a known issue.
+  Saved8087CW:= Default8087CW;
+  SavedMXCSR:= GetMXCSR;
+  // Calls Set8087CW and SetMXCSR
+  Math.SetExceptionMask([
+        exInvalidOp,
+        exDenormalized,
+        exZeroDivide,
+        exOverflow,
+        exUnderflow,
+        exPrecision
+        ]);
   {$ENDIF}
   FOpenALPRInstance := nil;
   FLibOpenALPR := 0;
@@ -217,7 +238,9 @@ begin
   FreeOpenAlprLib;
   FDetectionMask.Free;
   {$IFDEF FPC}
+  // Restore the original Masks
   System.Set8087CW(Saved8087CW);
+  system.SetMXCSR(SavedMXCSR);
   {$ENDIF}
   inherited Destroy;
 end;
@@ -664,12 +687,65 @@ end;
 {$ELSE}
 procedure TOpenALPRResult.ParseJSON(AJSON: String);
 var
+  P : TJSONParser;
+  jsonObj: TJSONObject;
+  plates: TJSONArray;
+  candidates, coordinates: TJSONArray;
+  jsonPlate, coordinate, candidate: TJSONObject;
+  dataType: TJSONData;
   plate: TOpenALPRPlate;
+  FS: TFormatSettings;
+  i, j: Integer;
 begin
-  plate := TOpenALPRPlate.Create;
-  // temporary not implemented, the rest must work for FPC before we can handle data
-  plate.Plate := 'Not implemented';
-  FPlates.Add(plate);
+  // To avoid conversion problem with dot and comma as numberseperator
+  FS.DecimalSeparator := '.';
+
+  if Length(AJSON) > 0 then
+  begin
+    P := TJSONParser.Create(AJSON,[joUTF8]);
+    jsonObj := P.Parse as TJSONObject;
+    try
+      dataType := jsonObj.Extract('data_type');
+      if not Assigned(dataType) then Exit;
+      if (dataType as TJSONString).Value = 'alpr_results' then
+      begin
+        FProcessingTimeMs := jsonObj.Find('processing_time_ms').AsFloat;
+
+        jsonObj.Find('results',plates);
+        for j:= 0 to plates.Count-1 do begin
+          jsonPlate := plates[j] as TJSONObject;
+          plate := TOpenALPRPlate.Create;
+          plate.Plate := jsonPlate.find('plate').AsString;
+          plate.Confidence := StrToFloat(jsonPlate.Find('confidence').AsString,FS);
+          plate.MatchesTemplate := jsonPlate.Find('matches_template').AsBoolean;
+          plate.PlateIndex := jsonPlate.Find('plate_index').AsInteger;
+          plate.Region := jsonPlate.Find('region').AsString;
+          plate.RegionConfidence := StrToFloat(jsonPlate.Find('region_confidence').AsString,FS);
+          plate.ProcessingTimeMs := StrToFloat(jsonPlate.Find('processing_time_ms').AsString,FS);
+
+          jsonPlate.Find('coordinates',coordinates);
+          for i := 0 to coordinates.Count-1 do begin
+            coordinate := coordinates[i] as TJSONObject;
+            plate.Coordinates[i].X :=  coordinate.Find('x').AsInteger;
+            plate.Coordinates[i].Y := coordinate.Find('y').AsInteger;
+          end;
+
+          jsonPlate.Find('candidates',candidates);
+          for i := 0 to candidates.Count-1 do begin
+            candidate := candidates[i] as TJSONObject;
+            plate.AddCandidate(
+               candidate.Find('plate').AsString,
+               StrToFloat(candidate.Find('confidence').AsString,FS),
+               candidate.Find('matches_template').AsBoolean
+            );
+          end;
+          FPlates.Add(plate);
+        end;
+      end;
+    finally
+      jsonObj.Free;
+    end;
+  end;
 end;
 {$ENDIF}
 

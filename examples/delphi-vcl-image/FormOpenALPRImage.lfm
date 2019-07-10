@@ -13,6 +13,7 @@ object OpenALPRImageForm: TOpenALPRImageForm
   Font.Name = 'Tahoma'
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  LCLVersion = '2.0.3.0'
   object Splitter1: TSplitter
     Left = 645
     Height = 437

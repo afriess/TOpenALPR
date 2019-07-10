@@ -143,7 +143,6 @@ var
   roi: TAlprCRegionOfInterest;
 begin
   if FInputImage.Width = 0 then Exit;
-
   rgMode.ItemIndex := 0;
   if (edROIX.Value <> 0) or
      (edROIY.Value <> 0) or
